@@ -1,0 +1,37 @@
+## 1. Search for the full webhook string in common file locations
+echo "### Searching for 'discord.com/api/webhooks' string in files (will list matching files) ###"
+sudo grep -rli "discord.com/api/webhooks" /home /root /tmp /var/tmp /etc /opt /usr/local 2>/dev/null
+
+## 2. If not found, search for a broader 'discord.com/api' string
+echo "### Searching for 'discord.com/api' string in files (if full string not found) ###"
+sudo grep -rli "discord.com/api" /home /root /tmp /var/tmp /etc /opt /usr/local 2>/dev/null
+
+## 3. Search specific script types for 'discord.com' and common request tools
+echo "### Searching .sh scripts for 'curl' or 'wget' + 'discord.com' ###"
+sudo find /home /root /tmp /var/tmp /etc /opt /usr/local -type f -name "*.sh" -exec grep -liE '(curl|wget).*discord\.com' {} + 2>/dev/null
+echo "### Searching .py scripts for 'requests' or 'urllib' + 'discord.com' ###"
+sudo find /home /root /tmp /var/tmp /etc /opt /usr/local -type f -name "*.py" -exec grep -liE '(requests|urllib).*discord\.com' {} + 2>/dev/null
+echo "### Searching .pl scripts for 'lwp-request' or 'HTTP::Request' + 'discord.com' ###"
+sudo find /home /root /tmp /var/tmp /etc /opt /usr/local -type f -name "*.pl" -exec grep -liE '(LWP::UserAgent|HTTP::Request|lwp-request).*discord\.com' {} + 2>/dev/null
+
+## 4. Check user taxman's shell history specifically for discord
+echo "### Checking taxman's .bash_history for discord.com ###"
+grep "discord.com" /home/taxman/.bash_history 2>/dev/null || echo "No hits in taxman's bash_history for discord.com"
+
+## 5. Check root's shell history specifically for discord
+echo "### Checking root's .bash_history for discord.com ###"
+sudo grep "discord.com" /root/.bash_history 2>/dev/null || echo "No hits in root's bash_history for discord.com"
+
+## 6. Check all cron jobs for lines containing 'discord.com' or common web tools
+echo "### Re-checking all crontabs for 'discord.com' or web tools ###"
+echo "Root crontab:"
+sudo crontab -l -u root 2>/dev/null | grep -Ei 'discord\.com|curl|wget|python|perl|nc'
+echo "User crontabs in /var/spool/cron/crontabs/:"
+for usercrontabfile in $(sudo ls /var/spool/cron/crontabs 2>/dev/null); do echo "--- Crontab for $usercrontabfile ---"; sudo cat "/var/spool/cron/crontabs/$usercrontabfile" 2>/dev/null | grep -Ei 'discord\.com|curl|wget|python|perl|nc'; done
+echo "System cron files in /etc/cron*:"
+sudo find /etc/cron* -type f -print0 | sudo xargs -0 grep -HliE 'discord\.com|curl|wget|python|perl|nc' 2>/dev/null
+
+echo ""
+echo "### If any files are listed by the 'grep -rli' or 'find ... -exec grep -liE' commands, inspect them with 'sudo cat [filepath]' ###"
+echo "### Look for a URL like https://discord.com/api/webhooks/{webhook_id}/{webhook_token} ###"
+echo "### The {webhook_id} is the numerical part. Evidence of outbound connection could be a script that uses this URL. ###"
