@@ -1,18 +1,25 @@
-# Inject: Discord Webhook Investigation - Phase 2 (Focus on lwp-request and broader search)
+# Inject: Discord Webhook Investigation (Focus on calling scripts & broad search)
 
-## 1. Examine the suspicious /usr/bin/lwp-request script (flagged by rkhunter)
-echo "### Contents of /usr/bin/lwp-request (this was flagged by rkhunter as a script) ###"
-sudo cat /usr/bin/lwp-request
-echo "### >> CAREFULLY EXAMINE THE OUTPUT ABOVE FOR ANY URLS (especially discord.com) OR OBFUSCATED CODE << ###"
+## Context: /usr/bin/lwp-request appears to be the standard Perl script.
+## The rkhunter warning likely means it found a script where it expected a binary.
+## We are now looking for *other* scripts/files that call lwp-request (or curl/wget) to Discord.
 
-## 2. Broader search for the full webhook string in more system directories
-echo "### Searching for 'discord.com/api/webhooks' string in common system binary/library paths ###"
-sudo grep -rli "discord.com/api/webhooks" /usr/bin /usr/sbin /bin /sbin /lib /usr/lib /var/www /srv 2>/dev/null || echo "No direct hits for full webhook URL in these system paths."
+## 1. Search shell scripts for lwp-request/curl/wget + discord.com
+echo "### Searching shell scripts for lwp-request/curl/wget + discord.com ###"
+sudo find / -type f -name "*.sh" -exec grep -HniE '(/usr/bin/lwp-request|lwp-request|curl|wget).*discord\.com' {} \; 2>/dev/null
 
-## 3. Broader search for 'discord.com/api' (partial string)
-echo "### Searching for 'discord.com/api' string in common system binary/library paths ###"
-sudo grep -rli "discord.com/api" /usr/bin /usr/sbin /bin /sbin /lib /usr/lib /var/www /srv 2>/dev/null || echo "No direct hits for partial webhook URL in these system paths."
+## 2. Search Perl scripts for LWP/lwp-request + discord.com
+echo "### Searching Perl scripts for LWP/lwp-request + discord.com ###"
+sudo find / -type f \( -name "*.pl" -o -name "*.pm" \) -exec grep -HniE '(LWP::UserAgent|HTTP::Request|/usr/bin/lwp-request|lwp-request).*discord\.com' {} \; 2>/dev/null
 
-## 4. Reminder on identifying the Webhook ID
+## 3. Broad search for the full discord.com/api/webhooks string (filenames only)
+# This command can be slow.
+echo "### Broad search for full discord.com/api/webhooks string (filenames only) ###"
+sudo grep -rli "discord.com/api/webhooks" / 2>/dev/null
+
+## 4. If a suspicious file is found by any of the above (e.g., /path/to/somefile):
+# echo "### Example: sudo cat /path/to/somefile ###"
+
+## 5. Reminder on identifying the Webhook ID
 echo "### If a Discord webhook URL is found (e.g., https://discord.com/api/webhooks/YOUR_WEBHOOK_ID/YOUR_WEBHOOK_TOKEN), the Webhook ID is the numerical part. ###"
-echo "### The script itself making the call (like /usr/bin/lwp-request if it's the culprit) is the evidence of the outbound connection. ###"
+echo "### The script/file containing this URL and making the call is the evidence of the outbound connection. ###"
