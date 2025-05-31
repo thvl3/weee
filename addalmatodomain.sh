@@ -11,8 +11,9 @@ DOMAIN_CONTROLLER_HOSTNAME="headman.repo.internal"
 DOMAIN_NAME="repo.internal"
 REALM_NAME="REPO.INTERNAL"
 DOMAIN_USER_FOR_JOIN="taxman@REPO.INTERNAL"
+DOMAIN_USER_PASSWORD_HINT="W3L0v3R3p0" # Updated Password Hint
 DOMAIN_SECONDARY_DNS_FALLBACK="1.1.1.1" # Define a fallback DNS
-# The password for taxman@REPO.INTERNAL is Em0j!sp34k - you will be prompted for this.
+# The password for taxman@REPO.INTERNAL is now hinted as W3L0v3R3p0 - you will be prompted for this.
 
 echo ">>> Starting Domain Join Process for mcjannek ($DOMAIN_NAME) <<<"
 
@@ -131,7 +132,7 @@ realm discover $REALM_NAME
 
 echo ""
 echo "### 6. Join mcjannek to the $REALM_NAME Domain ###"
-echo "## You will be prompted for the password for '$DOMAIN_USER_FOR_JOIN'. It is: Em0j!sp34k"
+echo "## You will be prompted for the password for '$DOMAIN_USER_FOR_JOIN'. It is: $DOMAIN_USER_PASSWORD_HINT"
 echo "## IMPORTANT: Take a SCREENSHOT of the successful join command output!"
 realm join --user=$DOMAIN_USER_FOR_JOIN $REALM_NAME
 # For AlmaLinux, explicit computer-ou might be needed if pre-staging is used, but not for basic join.
@@ -249,7 +250,7 @@ echo ""
 echo "### 14. Perform SSH Login Test for mcjannek ###"
 echo "## From ANOTHER machine, attempt to SSH as $DOMAIN_USER_FOR_JOIN@172.21.0.102"
 echo "## Command: ssh $DOMAIN_USER_FOR_JOIN@172.21.0.102"
-echo "## You should be prompted for $DOMAIN_USER_FOR_JOIN's password (Em0j!sp34k)."
+echo "## You should be prompted for $DOMAIN_USER_FOR_JOIN's password ($DOMAIN_USER_PASSWORD_HINT)."
 echo "## IMPORTANT: CAPTURE A SCREENSHOT of the successful SSH login for your report."
 echo "## Type 'exit' to close the SSH session."
 
