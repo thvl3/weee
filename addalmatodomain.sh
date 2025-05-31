@@ -11,6 +11,7 @@ DOMAIN_CONTROLLER_HOSTNAME="headman.repo.internal"
 DOMAIN_NAME="repo.internal"
 REALM_NAME="REPO.INTERNAL"
 DOMAIN_USER_FOR_JOIN="taxman@REPO.INTERNAL"
+DOMAIN_SECONDARY_DNS_FALLBACK="1.1.1.1" # Define a fallback DNS
 # The password for taxman@REPO.INTERNAL is Em0j!sp34k - you will be prompted for this.
 
 echo ">>> Starting Domain Join Process for mcjannek ($DOMAIN_NAME) <<<"
@@ -24,24 +25,38 @@ echo "### 1. Configure DNS for mcjannek ###"
 echo "## Attempting to set DNS via NetworkManager (nmcli)"
 echo "## This assumes your primary active connection should use this DNS."
 echo "## Find active connection:"
-ACTIVE_CONNECTION=$(nmcli -t -f NAME,DEVICE connection show --active | head -n1 | cut -d':' -f1)
-if [ -n "$ACTIVE_CONNECTION" ]; then
-    echo "## Active connection found: $ACTIVE_CONNECTION"
-    echo "## Backing up current DNS settings for $ACTIVE_CONNECTION (manual restoration may be needed if issues)"
-    # nmcli dev show $(nmcli -t -f DEVICE connection show --active | head -n1 | cut -d':' -f1) | grep DNS # Display current
-    echo "## Setting DNS to $DOMAIN_CONTROLLER_IP and fallback 1.1.1.1 for $ACTIVE_CONNECTION"
-    nmcli con mod "$ACTIVE_CONNECTION" ipv4.dns "$DOMAIN_CONTROLLER_IP,1.1.1.1"
-    nmcli con mod "$ACTIVE_CONNECTION" ipv4.ignore-auto-dns yes
-    nmcli con down "$ACTIVE_CONNECTION" && nmcli con up "$ACTIVE_CONNECTION"
+ACTIVE_CONNECTION_NAME=$(nmcli -t -f NAME connection show --active | head -n1)
+ACTIVE_CONNECTION_UUID=$(nmcli -t -f UUID connection show --active | head -n1)
+
+if [ -n "$ACTIVE_CONNECTION_UUID" ]; then
+    echo "## Active connection found: Name='$ACTIVE_CONNECTION_NAME', UUID='$ACTIVE_CONNECTION_UUID'"
+    echo "## Setting DNS to $DOMAIN_CONTROLLER_IP and fallback $DOMAIN_SECONDARY_DNS_FALLBACK for $ACTIVE_CONNECTION_NAME"
+    
+    # Modify DNS settings
+    nmcli con mod "$ACTIVE_CONNECTION_UUID" ipv4.dns "$DOMAIN_CONTROLLER_IP,$DOMAIN_SECONDARY_DNS_FALLBACK"
+    # Tell NetworkManager to not get DNS from DHCP
+    nmcli con mod "$ACTIVE_CONNECTION_UUID" ipv4.ignore-auto-dns yes
+    
+    echo "## Applying changes by reactivating the connection..."
+    # Reactivate the connection
+    if nmcli con down "$ACTIVE_CONNECTION_UUID" && nmcli con up "$ACTIVE_CONNECTION_UUID"; then
+        echo "## Connection reactivated successfully."
+    else
+        echo "## Failed to reactivate connection. Check NetworkManager status and logs."
+        # As a fallback, try to ensure NetworkManager reloads connections if up/down fails
+        nmcli c reload || echo "## Failed to reload connections."
+        nmcli n on || echo "## Failed to turn networking on."
+    fi
+    
     sleep 5 # Give NetworkManager a moment
     echo "## Verifying /etc/resolv.conf (should reflect new DNS)"
     cat /etc/resolv.conf
 else
     echo "## No active NetworkManager connection found. Attempting to manually set /etc/resolv.conf"
     echo "## Backing up /etc/resolv.conf to /etc/resolv.conf.bak"
-    cp /etc/resolv.conf /etc/resolv.conf.bak || true # Continue if it fails (e.g. immutable)
+    cp /etc/resolv.conf /etc/resolv.conf.bak || true
     echo "nameserver $DOMAIN_CONTROLLER_IP" > /etc/resolv.conf
-    echo "nameserver 1.1.1.1" >> /etc/resolv.conf # Fallback
+    echo "nameserver $DOMAIN_SECONDARY_DNS_FALLBACK" >> /etc/resolv.conf # Fallback DNS
     echo "## Displaying new /etc/resolv.conf"
     cat /etc/resolv.conf
 fi
