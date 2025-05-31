@@ -97,41 +97,49 @@ echo ""
 echo "--- Phase 2: Discover and Join Domain ---"
 
 echo ""
-echo "### 4. Fix/Set Kerberos Default Realm in /etc/krb5.conf (if missed) ###"
-echo "## Ensuring /etc/krb5.conf is correctly set up..."
-# Check if [libdefaults] default_realm is REPO.INTERNAL
-if ! grep -q "^\s*default_realm\s*=\s*$REALM_NAME" /etc/krb5.conf; then
-    echo "## default_realm not set or incorrect. Attempting to set it."
-    # Check if [libdefaults] exists
-    if grep -q "^\s*\[libdefaults\]" /etc/krb5.conf; then
-        sed -i "/^\s*\[libdefaults\]/a default_realm = $REALM_NAME" /etc/krb5.conf
-    else
-        echo -e "[libdefaults]\n default_realm = $REALM_NAME" >> /etc/krb5.conf
-    fi
-fi
-# Ensure [realms] section has the DC
-if ! grep -q "^\s*$REALM_NAME\s*=\s*{" /etc/krb5.conf; then
-    echo "## Realm definition for $REALM_NAME not found. Adding basic definition."
-    echo -e "\n[$REALM_NAME]\nkdc = $DOMAIN_CONTROLLER_HOSTNAME\nadmin_server = $DOMAIN_CONTROLLER_HOSTNAME" >> /etc/krb5.conf
-fi
-# Ensure [domain_realm] section maps correctly
-if ! grep -q "^\s*\.$DOMAIN_NAME\s*=\s*$REALM_NAME" /etc/krb5.conf; then
-    echo "## Domain realm mapping for .$DOMAIN_NAME not found. Adding."
-     if grep -q "^\s*\[domain_realm\]" /etc/krb5.conf; then
-        sed -i "/^\s*\[domain_realm\]/a .$DOMAIN_NAME = $REALM_NAME\n$DOMAIN_NAME = $REALM_NAME" /etc/krb5.conf
-    else
-        echo -e "\n[domain_realm]\n.$DOMAIN_NAME = $REALM_NAME\n$DOMAIN_NAME = $REALM_NAME" >> /etc/krb5.conf
-    fi
-fi
-echo "## Current /etc/krb5.conf (for review):"
+echo "### 4. Create a clean /etc/krb5.conf ###"
+echo "## Backing up existing /etc/krb5.conf to /etc/krb5.conf.orig-scriptbkp"
+mv /etc/krb5.conf /etc/krb5.conf.orig-scriptbkp || true # Continue if it doesn't exist
+echo "## Creating new minimal /etc/krb5.conf"
+cat << EOF > /etc/krb5.conf
+[logging]
+ default = FILE:/var/log/krb5libs.log
+ kdc = FILE:/var/log/krb5kdc.log
+ admin_server = FILE:/var/log/kadmind.log
+
+[libdefaults]
+ dns_lookup_realm = false
+ ticket_lifetime = 24h
+ renew_lifetime = 7d
+ forwardable = true
+ rdns = false
+ default_realm = $REALM_NAME
+ #default_ccache_name = KEYRING:persistent:%{uid}
+
+[realms]
+ $REALM_NAME = {
+  kdc = $DOMAIN_CONTROLLER_HOSTNAME
+  admin_server = $DOMAIN_CONTROLLER_HOSTNAME
+ }
+
+[domain_realm]
+ .$DOMAIN_NAME = $REALM_NAME
+ $DOMAIN_NAME = $REALM_NAME
+EOF
+
+echo "## New /etc/krb5.conf created:"
 cat /etc/krb5.conf
 
 echo ""
-echo "### 5. Discover the $REALM_NAME Domain on mcjannek ###"
+echo "### 5. Clear existing Kerberos tickets (if any) ###"
+kdestroy -A || echo "## No tickets to destroy or kdestroy not critical if it fails here."
+
+echo ""
+echo "### 6. Discover the $REALM_NAME Domain on mcjannek ###"
 realm discover $REALM_NAME
 
 echo ""
-echo "### 6. Join mcjannek to the $REALM_NAME Domain ###"
+echo "### 7. Join mcjannek to the $REALM_NAME Domain ###"
 echo "## You will be prompted for the password for '$DOMAIN_USER_FOR_JOIN'. It is: $DOMAIN_USER_PASSWORD_HINT"
 echo "## IMPORTANT: Take a SCREENSHOT of the successful join command output!"
 realm join --user=$DOMAIN_USER_FOR_JOIN $REALM_NAME
@@ -139,7 +147,7 @@ realm join --user=$DOMAIN_USER_FOR_JOIN $REALM_NAME
 # Example: realm join --user=administrator --computer-ou="OU=LinuxServers,DC=repo,DC=internal" REPO.INTERNAL
 
 echo ""
-echo "### 7. Verify Domain Join on mcjannek ###"
+echo "### 8. Verify Domain Join on mcjannek ###"
 echo "## IMPORTANT: Take a SCREENSHOT of this 'realm list' output!"
 realm list
 echo "## Check if the machine is listed and 'client-software' is 'sssd'."
@@ -152,7 +160,7 @@ echo ""
 echo "--- Phase 3: Configure SSSD, NSS, PAM ---"
 
 echo ""
-echo "### 8. Configure SSSD (/etc/sssd/sssd.conf) on mcjannek ###"
+echo "### 9. Configure SSSD (/etc/sssd/sssd.conf) on mcjannek ###"
 echo "## Backing up /etc/sssd/sssd.conf to /etc/sssd/sssd.conf.bak"
 cp /etc/sssd/sssd.conf /etc/sssd/sssd.conf.bak
 echo "## Current SSSD config:"
@@ -192,7 +200,7 @@ echo "## Updated /etc/sssd/sssd.conf (for review):"
 cat /etc/sssd/sssd.conf
 
 echo ""
-echo "### 9. Configure Name Service Switch (NSS) and PAM using authselect on mcjannek ###"
+echo "### 10. Configure Name Service Switch (NSS) and PAM using authselect on mcjannek ###"
 # authselect handles nsswitch.conf and PAM configurations for sssd
 authselect select sssd with-mkhomedir --force
 echo "## NSS and PAM configured by authselect."
@@ -200,14 +208,14 @@ echo "## Current /etc/nsswitch.conf (for review):"
 cat /etc/nsswitch.conf
 
 echo ""
-echo "### 10. Restart SSSD and Oddjob (for mkhomedir) and check status on mcjannek ###"
+echo "### 11. Restart SSSD and Oddjob (for mkhomedir) and check status on mcjannek ###"
 systemctl restart sssd oddjobd
 systemctl status sssd
 systemctl status oddjobd
 echo "## If sssd or oddjobd fails to start, check 'journalctl -xeu sssd' or 'journalctl -xeu oddjobd'."
 
 echo ""
-echo "### 11. Test Domain User Resolution on mcjannek ###"
+echo "### 12. Test Domain User Resolution on mcjannek ###"
 echo "## IMPORTANT: Take a SCREENSHOT of this 'id' command output!"
 echo "## Attempt to get user info for $DOMAIN_USER_FOR_JOIN:"
 id $DOMAIN_USER_FOR_JOIN
@@ -221,7 +229,7 @@ echo ""
 echo "--- Phase 4: SSH Configuration and Login Test ---"
 
 echo ""
-echo "### 12. Configure SSHD for Domain Logins on mcjannek ###"
+echo "### 13. Configure SSHD for Domain Logins on mcjannek ###"
 echo "## Backing up /etc/ssh/sshd_config to /etc/ssh/sshd_config.bak"
 cp /etc/ssh/sshd_config /etc/ssh/sshd_config.bak
 echo "## Current SSHD config related to PasswordAuthentication/ChallengeResponseAuthentication:"
@@ -242,12 +250,12 @@ echo "## Updated SSHD config lines (for review):"
 grep -E "^(PasswordAuthentication|ChallengeResponseAuthentication)" /etc/ssh/sshd_config
 
 echo ""
-echo "### 13. Restart SSHD on mcjannek ###"
+echo "### 14. Restart SSHD on mcjannek ###"
 systemctl restart sshd
 systemctl status sshd
 
 echo ""
-echo "### 14. Perform SSH Login Test for mcjannek ###"
+echo "### 15. Perform SSH Login Test for mcjannek ###"
 echo "## From ANOTHER machine, attempt to SSH as $DOMAIN_USER_FOR_JOIN@172.21.0.102"
 echo "## Command: ssh $DOMAIN_USER_FOR_JOIN@172.21.0.102"
 echo "## You should be prompted for $DOMAIN_USER_FOR_JOIN's password ($DOMAIN_USER_PASSWORD_HINT)."
